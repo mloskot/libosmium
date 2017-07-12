@@ -111,3 +111,57 @@ TEST_CASE("Writer") {
 
 }
 
+TEST_CASE("Writer (user-provided pool)") {
+    osmium::io::Header header;
+    header.set("generator", "test_writer.cpp");
+
+    osmium::io::Reader reader{with_data_dir("t/io/data.osm")};
+    osmium::memory::Buffer buffer = reader.read();
+    REQUIRE(buffer);
+    REQUIRE(buffer.committed() > 0);
+    const auto num = std::distance(buffer.select<osmium::OSMObject>().cbegin(), buffer.select<osmium::OSMObject>().cend());
+    REQUIRE(num > 0);
+    REQUIRE(buffer.select<osmium::OSMObject>().cbegin()->id() == 1);
+
+    std::string filename;
+
+    SECTION("Successful writes") {
+
+        SECTION("Writer buffer") {
+            osmium::thread::Pool pool;
+            filename = "test-writer-out-buffer.osm";
+            osmium::io::Writer writer{filename, header, osmium::io::overwrite::allow, pool};
+            writer(std::move(buffer));
+            writer.close();
+
+            REQUIRE_THROWS_AS(writer(osmium::memory::Buffer{}), osmium::io_error);
+        }
+
+        SECTION("Writer item") {
+            osmium::thread::Pool pool{1};
+            filename = "test-writer-out-item.osm";
+            osmium::io::Writer writer{filename, pool, header, osmium::io::overwrite::allow};
+            for (const auto& item : buffer) {
+                writer(item);
+            }
+            writer.close();
+        }
+
+        SECTION("Writer output iterator") {
+            osmium::thread::Pool pool{4};
+            filename = "test-writer-out-iterator.osm";
+            osmium::io::Writer writer{filename, header, osmium::io::overwrite::allow, pool};
+            auto it = osmium::io::make_output_iterator(writer);
+            std::copy(buffer.cbegin(), buffer.cend(), it);
+            writer.close();
+        }
+
+        osmium::io::Reader reader_check{filename};
+        osmium::memory::Buffer buffer_check = reader_check.read();
+        REQUIRE(buffer_check);
+        REQUIRE(buffer_check.committed() > 0);
+        REQUIRE(buffer_check.select<osmium::OSMObject>().size() == num);
+        REQUIRE(buffer_check.select<osmium::OSMObject>().cbegin()->id() == 1);
+    }
+}
+

@@ -162,7 +162,11 @@ namespace osmium {
 
             static constexpr int default_num_threads = 0;
 
-            static Pool& instance() {
+            explicit Pool(int num_threads = default_num_threads) :
+                Pool(num_threads, detail::get_work_queue_size()) {
+            }
+
+            static Pool& default_instance() {
                 static Pool pool(default_num_threads, detail::get_work_queue_size());
                 return pool;
             }
@@ -176,6 +180,10 @@ namespace osmium {
 
             ~Pool() {
                 shutdown_all_workers();
+            }
+
+            int num_threads() const noexcept {
+                return m_num_threads;
             }
 
             size_t queue_size() const {
